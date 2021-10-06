@@ -1,0 +1,83 @@
+import numpy as np
+import pandas as pd
+from scipy.integrate import odeint
+from sklearn.metrics import mean_squared_error
+from math import sqrt
+
+df = pd.read_excel('H1H2cat_noclean.xlsx')
+Time=df['Time'].values.tolist()
+Concentration=df['MeanBC'].values.tolist()
+# Catalyst + H1 -> CH1 (k1)
+# H2 + CH1 -> CH1H2 + Catalyst (k2)
+#CH1CH2 +RP-> RF+ RQ (k3)
+def cha(y, t, k1, k2, k3):
+ ca, h1, ch1, h2, ch1h2, rp, rf = y
+ dydt =  [-k1*ca*h1+ k2*h2*ch1, -k1*ca*h1, k1*ca*h1, -k2*h2*ch1, k2*h2*ch1, -k3*rp*ch1h2, k3*rp*ch1h2]
+ return dydt
+
+def normalizedata(concentration):
+    data=[]
+    for i in concentration:
+        data.append((i-145.5)*(1.2165*(10**-4)))
+    return data
+# Set pass-thru parameters (e.g. rate constants)
+#foo = 0.0 #dummy value to pass through the arg
+#k1 = 1.23 #1e-6 /M/s
+
+# Set the concentration of reactant species
+y0 = [0.025,0.2,0.0,0.2,0.0,0.2,0.0]  
+
+# Generate a solution at 101 evenly spaced samples in the interval 0 <= t <= 10
+t = np.linspace(0, 120, 120)
+
+#findingk1k2k3function
+def findK(data,cha,y0,t):
+    rmse=sqrt(mean_squared_error(data, odeint(cha, y0, t, args=(1,1,0.1))[:, 6]))
+    k1=1;k2=1;k3=0.1
+    for i1 in np.arange(970,2000,1):
+        for i2 in np.arange(30,50,1):
+            for i3 in np.arange(0.1,1,0.1):
+                if (sqrt(mean_squared_error(data, odeint(cha, y0, t, args=(i1,i2,i3))[:, 6]))<rmse):
+                    rmse=sqrt(mean_squared_error(data, odeint(cha, y0, t, args=(i1,i2,i3))[:, 6]))
+                    k1=i1;k2=i2;k3=i3
+    return [k1,k2,k3]
+
+#Call odeint to generate the solution. To pass the parameters b and c to pend, we give them to odeint using the args argument.
+allK=findK(normalizedata(Concentration),cha,y0,t)
+print(allK)
+sol = odeint(cha, y0, t, args=(allK[0],allK[1],allK[2]))
+#sol = odeint(cha, y0, t)
+#print((sol[:, 6]))
+
+#Label for graphs
+lca = "CAT(t)"
+lh1 = "H1(t)"
+lch1 = "CH1(t)"
+xla = "Time (minutes)"
+yla = "[C] (uM)"
+lh2 = "H2(t)"
+lch1h2 = "CH1H2(t)"
+lrp = "RP(t)"
+lrf = "RF(t)"
+
+#Graph dydt
+import matplotlib.pyplot as plt
+plt.figure(figsize=(20,20))
+#plt.plot(t, sol[:,0], 'b', label=lca)
+#plt.plot(t, sol[:,1], 'c', label=lh1)
+#plt.plot(t, sol[:, 2], 'g', label=lch1)
+#plt.plot(t, sol[:, 3], label = lh2)
+#plt.plot(t, sol[:, 4], label = lch1h2)
+#plt.plot(t, sol[:, 5], label = lrp)
+#plt.figure(figsize=(20,20))
+plt.scatter(x=Time,y=normalizedata(Concentration))
+plt.plot(t, sol[:, 6], label = lrf)
+#plt.plot(t, sol, label = lrf)
+plt.legend(loc='best')
+plt.xlabel(xla)
+plt.ylabel(yla)
+plt.grid()
+plt.show()
+#print(sol[:, 6])
+#print(np.size(Concentration))
+#print(np.size(sol[:, 6]))
